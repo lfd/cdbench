@@ -22,6 +22,8 @@
 #define PASSWORD "abc12345"
 #define DB "test"
 
+#define F_RESULT "stats.csv"
+
 #define CPUS 4
 #define START_CPU 8
 #define THREADS_PER_CPU 2
@@ -36,6 +38,8 @@
 //#define QUERY "SELECT * FROM user;"
 
 #define NSEC_PER_SEC		1000000000
+
+#define ARRAY_SIZE(a) sizeof(a) / sizeof(a[0])
 
 #define for_each_thread(t, i) \
 	for (i = 0, t = thread; i < THREADS; i++, t++)
@@ -64,6 +68,8 @@ struct thread_stat {
 };
 
 static int shutdown;
+
+static const float percentiles[] = {0.1, 0.5, 0.8, 0.9, 0.95, 0.99, 0.995};
 
 static void __attribute__((noreturn)) fatal(char *fmt, ...)
 {
@@ -211,14 +217,28 @@ static void print_stat(struct thread_stat *t)
 	       t->min, t->act, t->cycle ? t->avg / t->cycle : 0, t->max);
 }
 
+static int cmpfunc(const void *l_, const void *r_)
+{
+	latency_t *l = (latency_t *)l_, *r = (latency_t *)r_;
+
+	if (*l < *r)
+		return -1;
+	if (*r < *l)
+		return 1;
+
+	return 0;
+}
+
 int main(void)
 {
+	unsigned int cpu, cpu_thread, i, j, run;
 	struct thread_stat thread[THREADS];
 	struct thread_stat *t;
 	pthread_attr_t attr;
-	unsigned int cpu, cpu_thread, i;
-	int err;
+	float percentile;
+	FILE *histogram;
 	void *ret;
+	int err;
 
 	printf("MySQL client version: %s\n", mysql_get_client_info());
 
@@ -257,15 +277,50 @@ int main(void)
 		printf("\033[%dA", THREADS);
 	}
 
-	/* Cleanup */
+	/* Join Threads */
 	for_each_thread(t, i) {
 		print_stat(t);
 		err = pthread_join(t->thread, &ret);
 		if (err)
 			fatal("pthread_join: %d\n", err);
-
-		free(t->latencies);
 	}
+
+	histogram = fopen(F_RESULT, "w");
+	if (!histogram) {
+		perror("fopen");
+		err = -errno;
+		goto cleanup;
+	}
+
+	for (i = 0; i < THREADS; i++) {
+		fprintf(histogram, "%u (%u); ", thread[i].thread_no, thread[i].cpu);
+	}
+	fputc('\n', histogram);
+
+	for (run = 0; run < RUNS; run++) {
+		for (i = 0; i < THREADS; i++)
+			fprintf(histogram, "%llu; ", thread[i].latencies[run]);
+		fputc('\n', histogram);
+	}
+
+	/* Calculate some descriptive stats */
+	for (i = 0; i < THREADS; i++) {
+		qsort(thread[i].latencies, RUNS, sizeof(latency_t), cmpfunc);
+		printf("Stats for Thread %u:\n", thread[i].thread_no);
+		printf("\tMin: %7lld Avg: %5lld Max: %8lld\n", thread[i].min, thread[i].avg / thread[i].runs, thread[i].max);
+		for (j = 0; j < ARRAY_SIZE(percentiles); j++) {
+			percentile = percentiles[j];
+			printf("\t%2.2f%%ile < %lluns\n", percentile * 100, thread[i].latencies[(long unsigned int)(RUNS * percentile)]);
+		}
+		printf("\n");
+	}
+
+	err = fclose(histogram);
+
+cleanup:
+	/* Clean up */
+	for_each_thread(t, i)
+		free(t->latencies);
 
 	mysql_library_end();
 

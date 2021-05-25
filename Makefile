@@ -1,16 +1,20 @@
 CC=gcc
 LD=$(CC)
 CFLAGS=-O0 -g -ggdb -Wall -Wextra -pedantic -I /usr/include/mysql
-LDFLAGS=-lmariadb -lpthread
+LDFLAGS=-lpthread
+LDFLAGS_CLIENT=-lmariadb $(LDFLAGS)
+
+all: db server
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $^ -o $@
 
 db: db.o
+	$(LD) $(LDFLAGS_CLIENT) $^ -o $@
+
+server: server.o
 	$(LD) $(LDFLAGS) $^ -o $@
 
-all: db
-
 clean:
-	rm -rf db
+	rm -rf db server
 	rm -rf *.o

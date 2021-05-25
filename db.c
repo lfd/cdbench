@@ -10,6 +10,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <sys/mman.h>
+
 #include <mysql.h>
 
 /*
@@ -68,6 +70,10 @@ struct thread_stat {
 };
 
 static int shutdown;
+static bool verbose = false;
+
+/* Only required if swap is enabled */
+static bool lockall = false;
 
 static const float percentiles[] = {0.1, 0.5, 0.8, 0.9, 0.95, 0.99, 0.995};
 
@@ -240,9 +246,15 @@ int main(void)
 	void *ret;
 	int err;
 
-	printf("MySQL client version: %s\n", mysql_get_client_info());
+	if (verbose)
+		printf("MySQL client version: %s\n", mysql_get_client_info());
 
-	// TBD: Memlockall
+	/* lock all memory (prevent swapping) */
+	if (lockall)
+		if (mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
+			perror("mlockall");
+			return -1;
+		}
 	
 	for (cpu = 0, t = thread; cpu < CPUS; cpu++) {
 		for (cpu_thread = 0; cpu_thread < THREADS_PER_CPU; cpu_thread++, t++) {
@@ -271,15 +283,18 @@ int main(void)
 	}
 
 	while (shutdown != THREADS) {
-		for_each_thread(t, i)
-			print_stat(t);
+		if (verbose)
+			for_each_thread(t, i)
+				print_stat(t);
 		usleep(100000);
-		printf("\033[%dA", THREADS);
+		if (verbose)
+			printf("\033[%dA", THREADS);
 	}
 
 	/* Join Threads */
 	for_each_thread(t, i) {
-		print_stat(t);
+		if (verbose)
+			print_stat(t);
 		err = pthread_join(t->thread, &ret);
 		if (err)
 			fatal("pthread_join: %d\n", err);

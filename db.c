@@ -46,11 +46,13 @@ struct thread_stat {
 	unsigned int cpu;
 	unsigned int thread_no;
 	unsigned int runs;
+	unsigned int cycle;
 
 	int policy;
 	int priority;
 
 	latency_t *latencies;
+	latency_t act;
 	latency_t min;
 	latency_t avg;
 	latency_t max;
@@ -136,7 +138,6 @@ static void *benchthread(void *p)
 	struct sched_param schedp;
 	latency_t latency;
 	cpu_set_t cpuset;
-	unsigned int i;
 	MYSQL *m;
 	int err;
 
@@ -165,12 +166,12 @@ static void *benchthread(void *p)
 	t->avg = t->max = 0;
 	t->min = -1;
 
-	for (i = 0; i < t->runs; i++) {
+	for (t->cycle = 0; t->cycle < t->runs; t->cycle++) {
 		err = query(m, QUERY, &latency);
 		if (err)
 			fatal("Query");
 
-		t->latencies[i] = latency;
+		t->latencies[t->cycle] = t->act = latency;
 		t->avg += latency;
 
 		if (latency < t->min)

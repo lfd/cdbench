@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -29,7 +30,7 @@
 #define SCHED SCHED_FIFO
 #define SCHED_PRIO 42
 
-#define RUNS 100000
+#define RUNS 100000ULL
 
 #define QUERY "--"
 //#define QUERY "SELECT * FROM user;"
@@ -43,10 +44,14 @@ typedef unsigned long long latency_t;
 
 struct thread_stat {
 	pthread_t thread;
-	unsigned int cpu;
+	pid_t tid;
 	unsigned int thread_no;
-	unsigned int runs;
-	unsigned int cycle;
+	unsigned int cpu;
+
+	bool threadstarted;
+
+	long unsigned int runs;
+	long unsigned int cycle;
 
 	int policy;
 	int priority;
@@ -141,6 +146,8 @@ static void *benchthread(void *p)
 	MYSQL *m;
 	int err;
 
+	t->tid = gettid();
+
 	CPU_ZERO(&cpuset);
 	CPU_SET(t->cpu, &cpuset);
 
@@ -165,6 +172,7 @@ static void *benchthread(void *p)
 
 	t->avg = t->max = 0;
 	t->min = -1;
+	t->threadstarted = true;
 
 	for (t->cycle = 0; t->cycle < t->runs; t->cycle++) {
 		err = query(m, QUERY, &latency);
@@ -180,8 +188,6 @@ static void *benchthread(void *p)
 			t->max = latency;
 	}
 
-	t->avg /= t->runs;
-
 close:
 	mysql_close(m);
 
@@ -191,6 +197,18 @@ close:
 
 	shutdown++;
 	return NULL;
+}
+
+static void print_stat(struct thread_stat *t)
+{
+	if (!t->threadstarted) {
+		printf("T:%2d (%5d) HALTED\n", t->thread_no, t->tid);
+		return;
+	}
+
+	printf("T:%2d (%5d) CPU: %3u P:%2d C:%7lu Min: %7lld Act: %7lld Avg: %5lld Max: %8lld\n",
+	       t->thread_no, t->tid, t->cpu, t->priority, t->cycle,
+	       t->min, t->act, t->cycle ? t->avg / t->cycle : 0, t->max);
 }
 
 int main(void)
@@ -211,6 +229,7 @@ int main(void)
 			t->thread_no = cpu * THREADS_PER_CPU + cpu_thread;
 			t->cpu = START_CPU + cpu;
 			t->runs = RUNS;
+			t->threadstarted = false;
 
 			t->priority = SCHED_PRIO;
 			t->policy = SCHED;
@@ -225,27 +244,25 @@ int main(void)
 			if (err)
 				fatal("error from pthread_attr_init for thread %d: %s\n", t->thread_no, strerror(err));
 
-			// TBD: Set Attributes: Sched Policy + Affinity
-
-			printf("Starting Thread %u on CPU %u\n", t->thread_no, t->cpu);
 			err = pthread_create(&t->thread, &attr, benchthread, t);
 			if (err)
 				fatal("create thread: %u\n", t->thread_no);
 		}
 	}
 
-	/* Make this prettier! */
-	while (shutdown != THREADS)
-		sleep(1);
+	while (shutdown != THREADS) {
+		for_each_thread(t, i)
+			print_stat(t);
+		usleep(100000);
+		printf("\033[%dA", THREADS);
+	}
 
 	/* Cleanup */
 	for_each_thread(t, i) {
+		print_stat(t);
 		err = pthread_join(t->thread, &ret);
 		if (err)
 			fatal("pthread_join: %d\n", err);
-
-		printf("Closed thread: %u Result: %lld Min: %llu Avg: %llu Max: %llu\n",
-		       i, (long long int)ret, t->min, t->avg, t->max);
 
 		free(t->latencies);
 	}

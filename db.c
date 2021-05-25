@@ -70,7 +70,7 @@ struct thread_stat {
 };
 
 static int shutdown;
-static bool verbose = false;
+static bool verbose = true;
 
 /* Only required if swap is enabled */
 static bool lockall = false;

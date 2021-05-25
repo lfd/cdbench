@@ -133,12 +133,12 @@ crit_end:
 static void *benchthread(void *p)
 {
 	struct thread_stat *t = p;
+	struct sched_param schedp;
 	latency_t latency;
+	cpu_set_t cpuset;
 	unsigned int i;
 	MYSQL *m;
 	int err;
-	cpu_set_t cpuset;
-	struct sched_param schedp;
 
 	CPU_ZERO(&cpuset);
 	CPU_SET(t->cpu, &cpuset);

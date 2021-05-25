@@ -171,7 +171,7 @@ static void *benchthread(void *p)
 	schedp.sched_priority = t->priority;
 	err = sched_setscheduler(0, t->policy, &schedp);
 	if (err)
-		fatal("Could not set scheduler for thread %u on CPU %u\n", t->thread_no, t->cpu);
+		fatal("Could not set scheduler for thread %u on CPU %u\nError: %s\n", t->thread_no, t->cpu, strerror(errno));
 
 	m = mysql_init(NULL);
 	if (!m)

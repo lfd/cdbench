@@ -26,10 +26,8 @@
 
 #define F_RESULT "stats.csv"
 
-#define CPUS 4
 #define START_CPU 8
 #define THREADS_PER_CPU 2
-#define THREADS (CPUS * THREADS_PER_CPU)
 
 #define SCHED SCHED_FIFO
 #define SCHED_PRIO 42
@@ -44,7 +42,7 @@
 #define ARRAY_SIZE(a) sizeof(a) / sizeof(a[0])
 
 #define for_each_thread(t, i) \
-	for (i = 0, t = thread; i < THREADS; i++, t++)
+	for (i = 0, t = thread; i < no_threads; i++, t++)
 
 typedef unsigned long long latency_t;
 
@@ -69,13 +67,19 @@ struct thread_stat {
 	latency_t max;
 };
 
-static int shutdown;
+static unsigned int shutdown;
 static bool verbose = true;
 
 /* Only required if swap is enabled */
 static bool lockall = false;
 
 static const float percentiles[] = {0.1, 0.5, 0.8, 0.9, 0.95, 0.99, 0.995};
+
+static void __attribute__((noreturn)) usage(const char *prg)
+{
+	fprintf(stderr, "Usage: %s cpus\n", prg);
+	exit(-1);
+}
 
 static void __attribute__((noreturn)) fatal(char *fmt, ...)
 {
@@ -235,16 +239,30 @@ static int cmpfunc(const void *l_, const void *r_)
 	return 0;
 }
 
-int main(void)
+int main(int argc, const char **argv)
 {
-	unsigned int cpu, cpu_thread, i, j, run;
-	struct thread_stat thread[THREADS];
+	unsigned int no_threads, no_cpus, cpu, cpu_thread, i, j, run;
+	struct thread_stat *thread;
 	struct thread_stat *t;
 	pthread_attr_t attr;
 	float percentile;
 	FILE *histogram;
 	void *ret;
 	int err;
+
+	if (argc != 2)
+		usage(argv[0]);
+
+	no_cpus = atoi(argv[1]);
+	no_threads = no_cpus * THREADS_PER_CPU;
+
+	printf("Working on %u CPUs\n", no_cpus);
+
+	thread = malloc(sizeof(*thread) * no_threads);
+	if (!thread) {
+		fprintf(stderr, "malloc()");
+		return -1;
+	}
 
 	if (verbose)
 		printf("MySQL client version: %s\n", mysql_get_client_info());
@@ -256,7 +274,7 @@ int main(void)
 			return -1;
 		}
 	
-	for (cpu = 0, t = thread; cpu < CPUS; cpu++) {
+	for (cpu = 0, t = thread; cpu < no_cpus; cpu++) {
 		for (cpu_thread = 0; cpu_thread < THREADS_PER_CPU; cpu_thread++, t++) {
 			t->thread_no = cpu * THREADS_PER_CPU + cpu_thread;
 			t->cpu = START_CPU + cpu;
@@ -282,13 +300,13 @@ int main(void)
 		}
 	}
 
-	while (shutdown != THREADS) {
+	while (shutdown != no_threads) {
 		if (verbose)
 			for_each_thread(t, i)
 				print_stat(t);
 		usleep(100000);
 		if (verbose)
-			printf("\033[%dA", THREADS);
+			printf("\033[%dA", no_threads);
 	}
 
 	/* Join Threads */
@@ -307,19 +325,19 @@ int main(void)
 		goto cleanup;
 	}
 
-	for (i = 0; i < THREADS; i++) {
+	for (i = 0; i < no_threads; i++) {
 		fprintf(histogram, "%u (%u); ", thread[i].thread_no, thread[i].cpu);
 	}
 	fputc('\n', histogram);
 
 	for (run = 0; run < RUNS; run++) {
-		for (i = 0; i < THREADS; i++)
+		for (i = 0; i < no_threads; i++)
 			fprintf(histogram, "%llu; ", thread[i].latencies[run]);
 		fputc('\n', histogram);
 	}
 
 	/* Calculate some descriptive stats */
-	for (i = 0; i < THREADS; i++) {
+	for (i = 0; i < no_threads; i++) {
 		qsort(thread[i].latencies, RUNS, sizeof(latency_t), cmpfunc);
 		printf("Stats for Thread %u:\n", thread[i].thread_no);
 		printf("\tMin: %7lld Avg: %5lld Max: %8lld\n", thread[i].min, thread[i].avg / thread[i].runs, thread[i].max);
@@ -336,6 +354,8 @@ cleanup:
 	/* Clean up */
 	for_each_thread(t, i)
 		free(t->latencies);
+
+	free(thread);
 
 	mysql_library_end();
 

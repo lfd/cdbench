@@ -9,17 +9,19 @@ CFLAGS_RELEASE=-O3
 
 CFLAGS=$(CFLAGS_ALL) $(CFLAGS_RELEASE)
 
-all: db server
+TARGET=cdbench dummysqld
+
+all: $(TARGET)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $^ -o $@
 
-db: db.o
+cdbench: cdbench.o
 	$(LD) $(LDFLAGS_CLIENT) $^ -o $@
 
-server: server.o
+dummysqld: dummysqld.o
 	$(LD) $(LDFLAGS) $^ -o $@
 
 clean:
-	rm -rf db server
+	rm -rf $(TARGET)
 	rm -rf *.o

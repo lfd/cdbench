@@ -157,7 +157,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("Server started\nListening on 0.0.0.0:%u\n", PORT);
-	printf("Will distribute server threads on %u CPUs beginning from CPU %u\n", cpus, start_cpu);
+	printf("Will distribute server threads on %u CPUs beginning from CPU %u (CPU step: %u)\n", cpus, start_cpu, cpu_step);
 
 	next_cpu = 0;
 	while (1) {

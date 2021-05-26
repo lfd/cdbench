@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 
+#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,9 +41,13 @@ incbin(response_ok, "res/response_ok.bin")
 incbin(server_hello, "res/server_hello.bin")
 incbin(login_ok, "res/login_ok.bin")
 
-static void *thread(void *t)
+struct thread_info {
+	int fd;
+};
+
+static void *thread(void *p)
 {
-	int fd = (int)(long unsigned int)t;
+	struct thread_info *t = p;
 	char buf[MAXBUF];
 	ssize_t bread;
 
@@ -50,28 +55,30 @@ static void *thread(void *t)
 	printf("New server %u\n", gettid());
 
 	/* Step 1: Say Hello! */
-	write(fd, server_hello, server_hello_size);
+	write(t->fd, server_hello, server_hello_size);
 
 	/* Step 2: Receive Login Request */
-	bread = read(fd, buf, sizeof(buf));
+	bread = read(t->fd, buf, sizeof(buf));
 
 	/* Yep, you're in! */
-	write(fd, login_ok, login_ok_size);
+	write(t->fd, login_ok, login_ok_size);
 
 	while (1) {
-		bread = read(fd, buf, sizeof(buf));
+		bread = read(t->fd, buf, sizeof(buf));
 		if (bread <= 0)
 			break;
 
 		if (bread == 976 && *(uint32_t*)buf == 0x000003cc) {
-			write(fd, response, response_size);
+			write(t->fd, response, response_size);
 		}
 
 		/* Yeah, just eat it… */
-		write(fd, response_ok, response_ok_size);
+		write(t->fd, response_ok, response_ok_size);
 	}
 
-	close(fd);
+	printf("Shutting down %u\n", gettid());
+	close(t->fd);
+	free(t);
 
 	return NULL;
 }
@@ -80,9 +87,10 @@ int main(void)
 {
 	socklen_t clientlen = sizeof(struct sockaddr_in);
 	struct sockaddr_in clientaddr, serveraddr;
-	int listenfd, connfdp;
+	struct thread_info *t;
 	pthread_t tid;
-	int optval=1;
+	int listenfd;
+	int optval = 1;
 
 	if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 		return -1;
@@ -101,8 +109,13 @@ int main(void)
 		return -1;
 
 	while (1) {
-		connfdp = accept(listenfd, (struct sockaddr*)&clientaddr, &clientlen);
-		pthread_create(&tid, NULL, thread, (void*)(long unsigned int)connfdp);
+		t = malloc(sizeof(*t));
+		if (!t) {
+			fprintf(stderr, "malloc()");
+			return -ENOMEM;
+		}
+		t->fd = accept(listenfd, (struct sockaddr*)&clientaddr, &clientlen);
+		pthread_create(&tid, NULL, thread, (void*)t);
 	}
 
 	return 0;

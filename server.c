@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,31 +16,29 @@
 #define MAXBUF   8192
 #define LISTENQ  1024
 
-static const unsigned char server_hello[] = {
-	0x59, 0x00, 0x00, 0x00, 0x0a, 0x35, 0x2e, 0x35,
-	0x2e, 0x35, 0x2d, 0x31, 0x30, 0x2e, 0x35, 0x2e,
-	0x31, 0x30, 0x2d, 0x4d, 0x61, 0x72, 0x69, 0x61,
-	0x44, 0x42, 0x00, 0x05, 0x00, 0x00, 0x00, 0x2a,
-	0x48, 0x6b, 0x62, 0x2a, 0x47, 0x69, 0x5c, 0x00,
-	0xfe, 0xf7, 0xe0, 0x02, 0x00, 0xff, 0x81, 0x15,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00,
-	0x00, 0x00, 0x6d, 0x34, 0x58, 0x3e, 0x6d, 0x2b,
-	0x2a, 0x32, 0x5b, 0x57, 0x21, 0x3b, 0x00, 0x6d,
-	0x79, 0x73, 0x71, 0x6c, 0x5f, 0x6e, 0x61, 0x74,
-	0x69, 0x76, 0x65, 0x5f, 0x70, 0x61, 0x73, 0x73,
-	0x77, 0x6f, 0x72, 0x64, 0x00
-};
+#define __stringify_1(x)	#x
+#define __stringify(x)		__stringify_1(x)
 
-static const unsigned char login_ok[] = {
-	0x10, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02,
-	0x40, 0x00, 0x00, 0x00, 0x07, 0x01, 0x05, 0x04,
-	0x74, 0x65, 0x73, 0x74
-};
+asm(
+".macro inc_sample name, filename\n\t"
+        ".pushsection .rodata\n\t"
+        "\\name:\n\t"
+                ".incbin \"\\filename\"\n\t"
+        "\\name\\()_size:\n\t"
+	".int \\name\\()_size - \\name\n\t"
+        ".popsection\n\t"
+".endm\n\t"
+);
 
-static const unsigned char response_ok[] = {
-	0x07, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02,
-	0x00, 0x00, 0x00
-};
+#define incbin(label, filename) \
+	asm("inc_sample " __stringify(label) ", " filename "\n\t"); \
+	extern const unsigned char label[]; \
+	extern const unsigned int label##_size; \
+
+incbin(response, "res/response.bin")
+incbin(response_ok, "res/response_ok.bin")
+incbin(server_hello, "res/server_hello.bin")
+incbin(login_ok, "res/login_ok.bin")
 
 static void *thread(void *t)
 {
@@ -47,24 +47,28 @@ static void *thread(void *t)
 	ssize_t bread;
 
 	pthread_detach(pthread_self());
+	printf("New server %u\n", gettid());
 
 	/* Step 1: Say Hello! */
-	write(fd, server_hello, sizeof(server_hello));
+	write(fd, server_hello, server_hello_size);
 
 	/* Step 2: Receive Login Request */
 	bread = read(fd, buf, sizeof(buf));
-	printf("Login RQ: %lu\n", bread);
 
 	/* Yep, you're in! */
-	write(fd, login_ok, sizeof(login_ok));
+	write(fd, login_ok, login_ok_size);
 
 	while (1) {
 		bread = read(fd, buf, sizeof(buf));
 		if (bread <= 0)
 			break;
 
+		if (bread == 976 && *(uint32_t*)buf == 0x000003cc) {
+			write(fd, response, 1148);
+		}
+
 		/* Yeah, just eat it… */
-		write(fd, response_ok, sizeof(response_ok));
+		write(fd, response_ok, response_ok_size);
 	}
 
 	close(fd);

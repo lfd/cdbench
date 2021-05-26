@@ -52,7 +52,7 @@ struct thread_info {
 
 static void __attribute__((noreturn)) usage(const char *prg)
 {
-	fprintf(stderr, "%s start_cpu cpus cpu_step\n", prg);
+	fprintf(stderr, "Usage: %s start_cpu cpus cpu_step\n", prg);
 	exit(-1);
 }
 

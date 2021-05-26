@@ -14,7 +14,6 @@
 
 #define PORT	3306
 
-#define CPUS 8
 #define PRIORITY 42
 
 #define MAXBUF   8192
@@ -53,7 +52,7 @@ struct thread_info {
 
 static void __attribute__((noreturn)) usage(const char *prg)
 {
-	fprintf(stderr, "%s start_cpu\n", prg);
+	fprintf(stderr, "%s start_cpu cpus\n", prg);
 	exit(-1);
 }
 
@@ -120,16 +119,17 @@ int main(int argc, char **argv)
 {
 	socklen_t clientlen = sizeof(struct sockaddr_in);
 	struct sockaddr_in clientaddr, serveraddr;
-	unsigned int start_cpu, next_cpu;
+	unsigned int cpus, start_cpu, next_cpu;
 	struct thread_info *t;
 	pthread_t tid;
 	int listenfd;
 	int optval = 1;
 
-	if (argc != 2)
+	if (argc != 3)
 		usage(argv[0]);
 
 	start_cpu = atoi(argv[1]);
+	cpus = atoi(argv[2]);
 
 	if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 		perror("socket");
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("Server started\nListening on 0.0.0.0:%u\n", PORT);
-	printf("Will spawn server threads beginning from CPU %u\n", start_cpu);
+	printf("Will distribute server threads on %u CPUs beginning from CPU %u\n", cpus, start_cpu);
 
 	next_cpu = start_cpu;
 	while (1) {
@@ -170,7 +170,7 @@ int main(int argc, char **argv)
 		t->fd = accept(listenfd, (struct sockaddr*)&clientaddr, &clientlen);
 		pthread_create(&tid, NULL, thread, (void*)t);
 
-		if (++next_cpu > start_cpu + CPUS - 1)
+		if (++next_cpu > start_cpu + cpus - 1)
 			next_cpu = start_cpu;
 	}
 

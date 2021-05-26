@@ -1,8 +1,13 @@
 CC=gcc
 LD=$(CC)
-CFLAGS=-O0 -g -ggdb -Wall -Wextra -pedantic -I /usr/include/mysql
 LDFLAGS=-lpthread
 LDFLAGS_CLIENT=-lmariadb $(LDFLAGS)
+
+CFLAGS_ALL=-Wall -Wextra -pedantic -I /usr/include/mysql
+CFLAGS_DEBUG=-O0 -g
+CFLAGS_RELEASE=-O3
+
+CFLAGS=$(CFLAGS_ALL) $(CFLAGS_RELEASE)
 
 all: db server
 

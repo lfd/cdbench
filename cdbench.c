@@ -26,7 +26,6 @@
 
 #define F_RESULT "stats.csv"
 
-#define START_CPU 8
 #define THREADS_PER_CPU 2
 
 #define SCHED SCHED_FIFO
@@ -77,7 +76,7 @@ static const float percentiles[] = {0.1, 0.5, 0.8, 0.9, 0.95, 0.99, 0.995};
 
 static void __attribute__((noreturn)) usage(const char *prg)
 {
-	fprintf(stderr, "Usage: %s cpus\n", prg);
+	fprintf(stderr, "Usage: %s start_cpu cpus\n", prg);
 	exit(-1);
 }
 
@@ -241,7 +240,7 @@ static int cmpfunc(const void *l_, const void *r_)
 
 int main(int argc, const char **argv)
 {
-	unsigned int no_threads, no_cpus, cpu, cpu_thread, i, j, run;
+	unsigned int start_cpu, no_threads, no_cpus, cpu, cpu_thread, i, j, run;
 	struct thread_stat *thread;
 	struct thread_stat *t;
 	pthread_attr_t attr;
@@ -250,10 +249,11 @@ int main(int argc, const char **argv)
 	void *ret;
 	int err;
 
-	if (argc != 2)
+	if (argc != 3)
 		usage(argv[0]);
 
-	no_cpus = atoi(argv[1]);
+	start_cpu = atoi(argv[1]);
+	no_cpus = atoi(argv[2]);
 	no_threads = no_cpus * THREADS_PER_CPU;
 
 	printf("Working on %u CPUs\n", no_cpus);
@@ -277,7 +277,7 @@ int main(int argc, const char **argv)
 	for (cpu = 0, t = thread; cpu < no_cpus; cpu++) {
 		for (cpu_thread = 0; cpu_thread < THREADS_PER_CPU; cpu_thread++, t++) {
 			t->thread_no = cpu * THREADS_PER_CPU + cpu_thread;
-			t->cpu = START_CPU + cpu;
+			t->cpu = start_cpu + cpu;
 			t->runs = RUNS;
 			t->threadstarted = false;
 

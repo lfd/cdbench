@@ -14,6 +14,10 @@
 
 #define PORT	3306
 
+#define START_CPU 0
+#define CPUS 8
+#define PRIORITY 42
+
 #define MAXBUF   8192
 #define LISTENQ  1024
 
@@ -43,16 +47,40 @@ incbin(login_ok, "res/login_ok.bin")
 
 struct thread_info {
 	int fd;
+
+	unsigned int cpu;
+	unsigned int priority;
 };
 
 static void *thread(void *p)
 {
 	struct thread_info *t = p;
+	struct sched_param schedp;
 	char buf[MAXBUF];
+	cpu_set_t cpuset;
 	ssize_t bread;
+	int err;
 
 	pthread_detach(pthread_self());
-	printf("New server %u\n", gettid());
+
+	CPU_ZERO(&cpuset);
+	CPU_SET(t->cpu, &cpuset);
+
+	err = pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+	if (err) {
+		fprintf(stderr, "Could not set affinity\n");
+		return NULL;
+	}
+
+	memset(&schedp, 0, sizeof(schedp));
+	schedp.sched_priority = t->priority;
+	err = sched_setscheduler(0, SCHED_FIFO, &schedp);
+	if (err) {
+		fprintf(stderr, "Could not set scheduler\n");
+		return NULL;
+	}
+
+	printf("New server %u on CPU %u\n", gettid(), t->cpu);
 
 	/* Step 1: Say Hello! */
 	write(t->fd, server_hello, server_hello_size);
@@ -88,6 +116,7 @@ int main(void)
 	socklen_t clientlen = sizeof(struct sockaddr_in);
 	struct sockaddr_in clientaddr, serveraddr;
 	struct thread_info *t;
+	unsigned int next_cpu;
 	pthread_t tid;
 	int listenfd;
 	int optval = 1;
@@ -108,14 +137,20 @@ int main(void)
 	if (listen(listenfd, LISTENQ) < 0)
 		return -1;
 
+	next_cpu = START_CPU;
 	while (1) {
 		t = malloc(sizeof(*t));
 		if (!t) {
 			fprintf(stderr, "malloc()");
 			return -ENOMEM;
 		}
+		t->cpu = next_cpu;
+		t->priority = PRIORITY;
 		t->fd = accept(listenfd, (struct sockaddr*)&clientaddr, &clientlen);
 		pthread_create(&tid, NULL, thread, (void*)t);
+
+		if (++next_cpu > START_CPU + CPUS - 1)
+			next_cpu = START_CPU;
 	}
 
 	return 0;

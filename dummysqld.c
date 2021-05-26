@@ -121,21 +121,29 @@ int main(void)
 	int listenfd;
 	int optval = 1;
 
-	if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+	if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		perror("socket");
 		return -1;
+	}
 
-	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval , sizeof(int)) < 0)
+	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval , sizeof(int)) < 0) {
+		perror("setsocketopt");
 		return -1;
+	}
 
 	bzero((char *) &serveraddr, sizeof(serveraddr));
 	serveraddr.sin_family = AF_INET;
 	serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	serveraddr.sin_port = htons((unsigned short)PORT);
-	if (bind(listenfd, (struct sockaddr*)&serveraddr, sizeof(serveraddr)) < 0)
+	if (bind(listenfd, (struct sockaddr*)&serveraddr, sizeof(serveraddr)) < 0) {
+		perror("bind");
 		return -1;
+	}
 
-	if (listen(listenfd, LISTENQ) < 0)
+	if (listen(listenfd, LISTENQ) < 0) {
+		perror("listen");
 		return -1;
+	}
 
 	next_cpu = START_CPU;
 	while (1) {

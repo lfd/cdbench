@@ -64,7 +64,7 @@ static void *thread(void *t)
 			break;
 
 		if (bread == 976 && *(uint32_t*)buf == 0x000003cc) {
-			write(fd, response, 1148);
+			write(fd, response, response_size);
 		}
 
 		/* Yeah, just eat it… */

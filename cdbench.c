@@ -74,7 +74,7 @@ static const float percentiles[] = {0.1, 0.5, 0.8, 0.9, 0.95, 0.99, 0.995};
 
 static void __attribute__((noreturn)) usage(const char *prg)
 {
-	fprintf(stderr, "Usage: %s start_cpu cpus threads_per_cpu\n", prg);
+	fprintf(stderr, "Usage: %s start_cpu cpus threads_per_cpu cpu_step\n", prg);
 	exit(-1);
 }
 
@@ -238,7 +238,7 @@ static int cmpfunc(const void *l_, const void *r_)
 
 int main(int argc, const char **argv)
 {
-	unsigned int threads_per_cpu, start_cpu, no_threads, no_cpus, cpu, cpu_thread, i, j, run;
+	unsigned int cpu_step, threads_per_cpu, start_cpu, no_threads, no_cpus, cpu, cpu_thread, i, j, run;
 	struct thread_stat *thread;
 	struct thread_stat *t;
 	pthread_attr_t attr;
@@ -247,15 +247,16 @@ int main(int argc, const char **argv)
 	void *ret;
 	int err;
 
-	if (argc != 4)
+	if (argc != 5)
 		usage(argv[0]);
 
 	start_cpu = atoi(argv[1]);
 	no_cpus = atoi(argv[2]);
 	threads_per_cpu = atoi(argv[3]);
+	cpu_step = atoi(argv[4]);
 	no_threads = no_cpus * threads_per_cpu;
 
-	printf("Working on %u CPUs\n", no_cpus);
+	printf("Working on %u CPUs (%u threads per CPU, cpu step %u)\n", no_cpus, threads_per_cpu, cpu_step);
 
 	thread = malloc(sizeof(*thread) * no_threads);
 	if (!thread) {
@@ -276,7 +277,7 @@ int main(int argc, const char **argv)
 	for (cpu = 0, t = thread; cpu < no_cpus; cpu++) {
 		for (cpu_thread = 0; cpu_thread < threads_per_cpu; cpu_thread++, t++) {
 			t->thread_no = cpu * threads_per_cpu + cpu_thread;
-			t->cpu = start_cpu + cpu;
+			t->cpu = start_cpu + cpu * cpu_step;
 			t->runs = RUNS;
 			t->threadstarted = false;
 
